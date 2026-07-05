@@ -1,0 +1,49 @@
+name: Popcorn Linux Phase 1 (BusyBox Initramfs)
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch: # Erlaubt auch manuelles Starten über die Webseite
+
+jobs:
+  build-initramfs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 1. System-Abhängigkeiten installieren
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y crossbuild-essential-arm64 cpio wget
+      
+      - name: 2. BusyBox Quellcode herunterladen
+        run: |
+          wget https://busybox.net/downloads/busybox-1.36.1.tar.bz2
+          tar -xjf busybox-1.36.1.tar.bz2
+      
+      - name: 3. BusyBox für ARM64 kompilieren (statisch)
+        run: |
+          cd busybox-1.36.1
+          # Standard-Konfiguration für ARM64 laden
+          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- defconfig
+          # Erzwingen, dass das Programm statisch gelinkt wird (wichtig für initramfs!)
+          sed -i 's/^.*CONFIG_STATIC[^_].*$/CONFIG_STATIC=y/' .config
+          # Kompilieren mit voller Prozessor-Power
+          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j$(nproc)
+      
+      - name: 4. Initramfs-Struktur aufbauen und verpacken
+        run: |
+          mkdir -p initramfs_root/{bin,sbin,etc,proc,sys,usr/bin,usr/sbin}
+          cp busybox-1.36.1/busybox initramfs_root/bin/
+          
+          cd initramfs_root
+          # Die lebenswichtigen Symlinks für den Kernel setzen
+          ln -s bin/busybox init
+          ln -s busybox bin/sh
+          
+          # Das perfekte, fehlerfreie CPIO-Archiv erstellen
+          find . -print0 | cpio --null -ov --format=newc | gzip -9 > ../initramfs.cpio.gz
+          
+      - name: 5. Fertiges Image bereitstellen
+        uses: actions/upload-artifact@v4
+        with:
+          name: initramfs-aarch64
+          path: initramfs.cpio.gz

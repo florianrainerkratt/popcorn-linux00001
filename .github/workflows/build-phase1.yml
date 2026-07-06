@@ -3,7 +3,7 @@ name: Popcorn Linux Phase 1 (BusyBox Initramfs)
 on:
   push:
     branches: [ main ]
-  workflow_dispatch: # Erlaubt auch manuelles Starten über die Webseite
+  workflow_dispatch:
 
 jobs:
   build-initramfs:
@@ -12,34 +12,34 @@ jobs:
       - name: 1. System-Abhängigkeiten installieren
         run: |
           sudo apt-get update
-          sudo apt-get install -y crossbuild-essential-arm64 cpio wget
+          sudo apt-get install -y crossbuild-essential-arm64 cpio wget bzip2
       
       - name: 2. BusyBox Quellcode herunterladen
         run: |
           wget https://busybox.net/downloads/busybox-1.36.1.tar.bz2
           tar -xjf busybox-1.36.1.tar.bz2
       
-      - name: 3. BusyBox für ARM64 kompilieren (statisch)
+      - name: 3. BusyBox für ARM64 konfigurieren und statisch kompilieren
         run: |
           cd busybox-1.36.1
-          # Standard-Konfiguration für ARM64 laden
+          # Standardkonfiguration erstellen
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- defconfig
-          # Erzwingen, dass das Programm statisch gelinkt wird (wichtig für initramfs!)
-          sed -i 's/^.*CONFIG_STATIC[^_].*$/CONFIG_STATIC=y/' .config
-          # Kompilieren mit voller Prozessor-Power
-          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j$(nproc)
-      
+          
+          # Sicherstellen, dass das statische Linken korrekt im Makefile verankert ist
+          sed -i 's/CONFIG_STATIC is not set/CONFIG_STATIC=y/' .config
+          
+          # Kompilieren und die statischen Flags explizit an den Linker übergeben
+          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- LDFLAGS="--static" -j$(nproc)
+          
       - name: 4. Initramfs-Struktur aufbauen und verpacken
         run: |
-          mkdir -p initramfs_root/{bin,sbin,etc,proc,sys,usr/bin,usr/sbin}
-          cp busybox-1.36.1/busybox initramfs_root/bin/
+          mkdir -p ../initramfs_root/{bin,sbin,etc,proc,sys,usr/bin,usr/sbin}
+          cp busybox-1.36.1/busybox ../initramfs_root/bin/
           
-          cd initramfs_root
-          # Die lebenswichtigen Symlinks für den Kernel setzen
-          ln -s bin/busybox init
-          ln -s busybox bin/sh
+          cd ../initramfs_root
+          ln -sf bin/busybox init
+          ln -sf busybox bin/sh
           
-          # Das perfekte, fehlerfreie CPIO-Archiv erstellen
           find . -print0 | cpio --null -ov --format=newc | gzip -9 > ../initramfs.cpio.gz
           
       - name: 5. Fertiges Image bereitstellen

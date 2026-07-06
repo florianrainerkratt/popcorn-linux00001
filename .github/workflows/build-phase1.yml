@@ -22,16 +22,17 @@ jobs:
       - name: 3. BusyBox für ARM64 konfigurieren und statisch kompilieren
         run: |
           cd busybox-1.36.1
-          # 1. Defconfig erstellen
+          # Defconfig als saubere ARM64-Basis laden
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- defconfig
           
-          # 2. Statisch auf "yes" setzen
-          sed -i 's/.*CONFIG_STATIC.*/CONFIG_STATIC=y/' .config
+          # Das statische Flag per Skript aktivieren
+          sed -i 's/# CONFIG_STATIC is not set/CONFIG_STATIC=y/' .config
+          sed -i 's/CONFIG_STATIC=n/CONFIG_STATIC=y/' .config
           
-          # 3. Interaktive Abfragen blockieren und Konfiguration aktualisieren
-          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- oldconfig
+          # Alle eventuell neu auftauchenden Fragen automatisch mit "Enter" (Standard) beantworten
+          yes "" | make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- oldconfig
           
-          # 4. Sauber kompilieren
+          # Kompilieren ohne x86-Konflikte
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j$(nproc)
           
       - name: 4. Initramfs-Struktur aufbauen und verpacken
